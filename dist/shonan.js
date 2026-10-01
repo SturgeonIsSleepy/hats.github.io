@@ -1,10 +1,17 @@
 import * as THREE from 'three';
+import { geography } from './geography.js';
+import { buildings } from './buildings.js';
 
-// Layout follows the Enoden station photos and the inland-facing crossing view.
-// Distances are an artistic reconstruction, not a surveyed map.
+// Railway, road and platform follow mapped coordinates. Buildings are actual
+// PLATEAU LOD1 meshes; facade detail is reconstructed from reference photos.
 export function buildShonan(scene) {
   const world = new THREE.Group(); world.name = 'Kamakurakokomae'; scene.add(world);
-  const material = (color, roughness = 0.8, metalness = 0) => new THREE.MeshStandardMaterial({ color, roughness, metalness });
+  const materialCache = new Map();
+  const material = (color, roughness = 0.8, metalness = 0) => {
+    const key = `${color}/${roughness}/${metalness}`;
+    if (!materialCache.has(key)) materialCache.set(key, new THREE.MeshStandardMaterial({ color, roughness, metalness }));
+    return materialCache.get(key);
+  };
   const concrete = material('#99958a'), cream = material('#ded6b3'), steel = material('#717c79', 0.4, 0.7);
   const dark = material('#252d2b'), green = material('#245a40', 0.35, 0.25), yellow = material('#e9b93f');
   const glass = material('#254a56', 0.14, 0.45);
@@ -51,7 +58,7 @@ export function buildShonan(scene) {
 
   // Physically shaded sky and ocean, without external image downloads at runtime.
   const sun = new THREE.Vector3(-0.4, 0.65, -0.64).normalize();
-  const sky = new THREE.Mesh(new THREE.SphereGeometry(450, 32, 16), new THREE.ShaderMaterial({
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(1800, 32, 16), new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, uniforms: { sun: { value: sun } },
     vertexShader: 'varying vec3 direction; void main(){direction=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
     fragmentShader: `uniform vec3 sun; varying vec3 direction;
@@ -72,7 +79,7 @@ export function buildShonan(scene) {
   })); scene.add(sky);
   const skyPixels = new Uint8Array(256 * 128 * 4);
   for (let y = 0; y < 128; y++) for (let x = 0; x < 256; x++) {
-    const elevation = Math.cos(y / 127 * Math.PI);
+    const elevation = -Math.cos(y / 127 * Math.PI);
     const horizon = Math.pow(Math.max(elevation, 0), 0.38);
     const color = elevation > 0 ? [198 - horizon * 108, 215 - horizon * 49, 226 - horizon * 12] : [99, 105, 93];
     const i = (y * 256 + x) * 4;
@@ -88,7 +95,7 @@ export function buildShonan(scene) {
         p.z+=(sin(p.x*0.21+p.y*0.34+time)*0.10+sin(p.x*0.53-p.y*0.19+time*1.4)*0.035)*deep;
         worldPosition=(modelMatrix*vec4(p,1.0)).xyz;gl_Position=projectionMatrix*viewMatrix*vec4(worldPosition,1.0);}`,
     fragmentShader: `uniform float time;uniform vec3 sun;varying vec3 worldPosition;
-      void main(){vec3 p=worldPosition;float shore=1.0-smoothstep(-28.0,-10.0,p.z);
+      void main(){vec3 p=worldPosition;float coastline=-22.0-clamp(p.x+100.0,0.0,400.0)*0.13; float shore=1.0-smoothstep(coastline-20.0,coastline,p.z);
         float nx=cos(p.x*0.6+p.z*0.81+time*1.5)*0.07+cos(p.x*2.4-p.z*1.8-time)*0.03;
         float nz=sin(p.z*0.8+p.x*0.41-time*1.2)*0.10+sin(p.z*2.8+p.x*1.6-time*2.0)*0.025;
         vec3 n=normalize(vec3(nx,1.0,nz));vec3 v=normalize(cameraPosition-p);
@@ -106,75 +113,91 @@ export function buildShonan(scene) {
         #include <colorspace_fragment>
       }`
   });
-  const water = new THREE.Mesh(new THREE.PlaneGeometry(600, 420, 180, 100), waterMaterial);
-  water.rotation.x = -Math.PI / 2; water.position.set(0, -0.86, -220); scene.add(water);
-  box(world, [150, 0.7, 24], [0, -0.4, 3], concrete);
-  const terrainGeometry = new THREE.PlaneGeometry(180, 80, 60, 28);
-  const terrainVertices = terrainGeometry.attributes.position;
-  for (let i = 0; i < terrainVertices.count; i++) {
-    const z = 45 - terrainVertices.getY(i);
-    terrainVertices.setZ(i, Math.max(0, z - 15) * 0.08 + Math.sin(terrainVertices.getX(i) * 0.08) * Math.max(0, z - 20) * 0.025);
+  const water = new THREE.Mesh(new THREE.PlaneGeometry(1600, 1100, 160, 100), waterMaterial);
+  water.rotation.x = -Math.PI / 2; water.position.set(0, -1.4, -500); scene.add(water);
+  function interpolate(points, x) {
+    for (let i = 1; i < points.length; i++) {
+      const [a, b] = [points[i - 1], points[i]];
+      if (x >= a[0] && x <= b[0]) return THREE.MathUtils.lerp(a[1], b[1], (x - a[0]) / (b[0] - a[0]));
+    }
+    return x < points[0][0] ? points[0][1] : points.at(-1)[1];
   }
-  terrainGeometry.computeVertexNormals();
-  const terrain = new THREE.Mesh(terrainGeometry, material('#647359'));
-  terrain.rotation.x = -Math.PI / 2; terrain.position.set(0, -0.2, 45); terrain.receiveShadow = true; world.add(terrain);
-  box(world, [150, 0.08, 7.2], [0, 0.005, -2.5], asphalt);
-  box(world, [150, 0.16, 1.55], [0, -0.04, -6.9], concrete);
-  box(world, [150, 1, 0.6], [0, -0.5, -7.85], concrete);
-  box(world, [150, 0.15, 2.5], [0, -0.92, -9.1], sand);
-  box(world, [150, 0.008, 0.075], [0, 0.05, -2.5], material('#c99538'));
-  for (const z of [-5.75, 0.8]) box(world, [150, 0.007, 0.08], [0, 0.05, z], material('#e0ded3'));
-  for (let x = -72; x <= 72; x += 3) {
-    rod(world, [x, 0, -7.7], [x, 0.85, -7.7], 0.04, cream);
-    for (const y of [0.32, 0.7]) rod(world, [x, y, -7.7], [x + 3, y, -7.7], 0.025, steel);
+  const railZ = x => interpolate(geography.rail, x);
+  const roadZ = x => interpolate(geography.road, x);
+  const walkZ = x => interpolate(geography.walk, x);
+  function ribbon(points, width, height, mat, name) {
+    const vertices = [], indices = [];
+    points.forEach((p, i) => {
+      const a = points[Math.max(0, i - 1)], b = points[Math.min(points.length - 1, i + 1)];
+      const dx = b[0] - a[0], dz = b[1] - a[1], length = Math.hypot(dx, dz) || 1;
+      const y = typeof height === 'function' ? height(p[0], p[1]) : height;
+      for (const side of [-1, 1]) vertices.push(p[0] - dz / length * width / 2 * side, y, p[1] + dx / length * width / 2 * side);
+      if (i) { const j = i * 2; indices.push(j - 2, j - 1, j, j - 1, j + 1, j); }
+    });
+    const geometry = new THREE.BufferGeometry(); geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    geometry.setIndex(indices); geometry.computeVertexNormals();
+    // Repeating UVs retain real metre-scale grain across long roads.
+    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(points.flatMap((p, i) => [i / 4, 0, i / 4, 1]), 2));
+    const mesh = new THREE.Mesh(geometry, mat); mesh.name = name || ''; mesh.receiveShadow = true; world.add(mesh); return mesh;
   }
-  // A side street slopes down toward the sea and crosses a single railway track.
-  const slope = box(world, [4.5, 0.12, 23], [-4, 1.17, 15.45], asphalt); slope.rotation.x = -Math.atan(0.1);
-  box(world, [4.5, 0.025, 8.5], [-4, 0.055, 0.6], asphalt);
-  for (let i = 0; i < 6; i++) box(world, [0.35, 0.012, 1.15], [-5.75 + i * 0.7, 0.055, -0.05], cream);
-  box(world, [150, 0.12, 2.0], [0, 0.06, 3.3], ballastMaterial);
-  const sleeperMaterial = material('#574d3c');
-  const sleepers = new THREE.InstancedMesh(new THREE.BoxGeometry(0.19, 0.10, 1.8), sleeperMaterial, 240);
+  const samples = Array.from({ length: 181 }, (_, i) => -360 + i * 4);
+  ribbon(samples.map(x => [x, roadZ(x) + 5]), 24, -0.04, concrete, 'CoastalFoundation');
+  ribbon(samples.map(x => [x, railZ(x) + 92]), 180, -0.03, material('#788374'), 'InlandGround');
+  ribbon(samples.map(x => [x, roadZ(x)]), 7.2, 0.04, asphalt, 'Route134');
+  ribbon(samples.map(x => [x, roadZ(x)]), 0.075, 0.046, material('#c99538'));
+  for (const side of [-1, 1]) ribbon(samples.map(x => [x, roadZ(x) + side * 3.35]), 0.08, 0.048, cream);
+  ribbon(samples.map(x => [x, walkZ(x)]), 3.0, 0.09, concrete, 'RailSideWalk');
+  ribbon(samples.map(x => [x, roadZ(x) - 4.8]), 1.8, 0.08, concrete);
+  ribbon(samples.map(x => [x, roadZ(x) - 7.5]), 4, -0.65, sand);
+  ribbon(samples.map(x => [x, railZ(x)]), 2.2, 0.10, ballastMaterial, 'EnodenTrack');
   const matrix = new THREE.Matrix4();
-  for (let i = 0; i < 240; i++) { matrix.makeTranslation(i * 0.62 - 75, 0.12, 3.3); sleepers.setMatrixAt(i, matrix); }
+  const sleepers = new THREE.InstancedMesh(new THREE.BoxGeometry(0.19, 0.10, 1.8), material('#574d3c'), 1160);
+  for (let i = 0; i < 1160; i++) { const x = -360 + i * 0.62; matrix.makeTranslation(x, 0.14, railZ(x)); sleepers.setMatrixAt(i, matrix); }
   world.add(sleepers);
-  for (const z of [2.78, 3.82]) {
-    box(world, [150, 0.12, 0.06], [0, 0.21, z], steel);
-    box(world, [150, 0.026, 0.12], [0, 0.27, z], material('#afbab6', 0.2, 0.85));
+  for (const dz of [-0.5335, 0.5335]) ribbon(samples.map(x => [x, railZ(x) + dz]), 0.07, 0.27, steel);
+  for (let x = -356; x < 356; x += 4) {
+    const z = roadZ(x) - 5.7;
+    rod(world, [x, 0, z], [x, 0.88, z], 0.035, cream);
+    for (const y of [0.35, 0.78]) rod(world, [x, y, z], [x + 4, y, roadZ(x + 4) - 5.7], 0.025, steel);
+    if (Math.abs(x) > 3) {
+      const rz = railZ(x) - 1.55;
+      box(world, [0.12, 0.85, 0.12], [x, 0.48, rz], concrete);
+      rod(world, [x, 0.86, rz], [x + 4, 0.86, railZ(x + 4) - 1.55], 0.06, concrete);
+      rod(world, [x, 0.42, rz], [x + 4, 0.42, railZ(x + 4) - 1.55], 0.04, concrete);
+    }
   }
-  // Asphalt infill at the crossing leaves the rail heads visible.
-  box(world, [4.5, 0.13, 2.0], [-4, 0.10, 3.3], asphalt);
-  for (let x = -65; x < 70; x += 13) {
-    rod(world, [x, 0, 5.1], [x, 7.3, 5.1], 0.10, concrete);
-    rod(world, [x, 6.4, 5.1], [x, 6.4, 2.6], 0.05, steel);
-    rod(world, [x, 7.0, 5.1], [x, 6.4, 3.0], 0.028, steel);
-    wire([[x, 6.05, 3.3], [x + 6.5, 5.95, 3.3], [x + 13, 6.05, 3.3]], dark);
-    for (const y of [6.95, 7.2, 7.45]) wire([[x, y, 5.3], [x + 6.5, y - 0.18, 5.3], [x + 13, y, 5.3]], dark);
+  for (let x = -350; x < 350; x += 23) {
+    const z = railZ(x);
+    rod(world, [x, 0, z + 2.2], [x, 7.3, z + 2.2], 0.10, concrete);
+    rod(world, [x, 6.5, z + 2.2], [x, 6.5, z - 0.8], 0.05, steel);
+    rod(world, [x, 7.0, z + 2.2], [x, 6.5, z - 0.6], 0.03, steel);
+    wire([[x, 6.05, z], [x + 11.5, 5.95, railZ(x + 11.5)], [x + 23, 6.05, railZ(x + 23)]], dark);
+    for (const y of [7.0, 7.25]) wire([[x, y, z + 2.2], [x + 11.5, y - 0.3, railZ(x + 11.5) + 2.2], [x + 23, y, railZ(x + 23) + 2.2]], dark);
   }
+  const uphill = (x, z) => Math.max(0, z - railZ(x) - 3) * 0.105;
+  ribbon(geography.hillStreet.filter(p => p[1] < 145), 5.2, uphill, asphalt, 'Nissaka');
+  box(world, [5.2, 0.13, 2.2], [0.5, 0.10, -11.1], asphalt);
+  for (let i = 0; i < 7; i++) box(world, [0.42, 0.012, 1.8], [-2 + i * 0.8, 0.055, -18], cream);
 
-  // Seaward-facing open platform and EN08 signage, based on the operator's photos.
-  box(world, [24, 0.8, 2.6], [-19, 0.4, 5.8], concrete);
-  box(world, [24, 0.025, 0.18], [-19, 0.815, 4.62], yellow);
-  box(world, [20, 0.14, 2.95], [-20, 3.6, 5.8], material('#666c62'), true);
-  for (let x = -29; x <= -11; x += 3.6) {
-    box(world, [0.11, 2.8, 0.11], [x, 2.17, 6.55], material('#746b53'), true);
-    rod(world, [x, 3.55, 4.5], [x, 3.55, 7.0], 0.055, steel);
-    box(world, [0.8, 0.05, 0.12], [x, 3.4, 5.3], cream);
+  // Actual station footprint is retained; LOD1 station mesh is replaced by the
+  // open platform canopy, not a solid block. Operator photos guide its detail.
+  const platformShape = new THREE.Shape(); geography.platform.forEach((p, i) => i ? platformShape.lineTo(p[0], -p[1]) : platformShape.moveTo(p[0], -p[1]));
+  const platform = new THREE.Mesh(new THREE.ExtrudeGeometry(platformShape, { depth: 0.8, bevelEnabled: false }), concrete);
+  platform.rotation.x = -Math.PI / 2; platform.receiveShadow = true; world.add(platform);
+  const stationRoof = box(world, [43, 0.16, 3.1], [-141, 3.9, 3.1], material('#79786d'), true);
+  stationRoof.rotation.z = 0.006;
+  for (let x = -162; x <= -120; x += 4.2) {
+    box(world, [0.13, 3.0, 0.13], [x, 2.3, 4.0], material('#575b50'), true);
+    rod(world, [x, 3.76, 1.4], [x, 3.76, 4.8], 0.07, steel);
+    box(world, [3.8, 0.04, 0.25], [x, 0.82, railZ(x) + 1.1], yellow);
+    box(world, [2.0, 0.1, 0.5], [x, 1.3, 3.6], material('#896c42'));
   }
-  const stationTitle = board('江ノ電 鎌倉高校前駅', 7.2, 0.65, '#315d41', '#faf3df'); stationTitle.position.set(-18, 3.89, 4.52); stationTitle.rotation.y = Math.PI; stationTitle.material.side = THREE.FrontSide; world.add(stationTitle);
-  const inlandTitle = stationTitle.clone(); inlandTitle.rotation.y = 0; inlandTitle.position.z = 7.3; world.add(inlandTitle);
-  for (const x of [-12, -23]) {
-    const name = board('鎌倉高校前\nEN08  KAMAKURAKOKOMAE', 3.5, 0.8); name.position.set(x, 2.4, 6.54); name.rotation.y = Math.PI; world.add(name);
-    const back = name.clone(); back.rotation.y = 0; back.position.z += 0.03; world.add(back);
+  const stationTitle = board('江ノ電 鎌倉高校前駅', 10, 0.8, '#315d41', '#faf3df'); stationTitle.position.set(-137, 4.35, 1.5); stationTitle.rotation.y = Math.PI; world.add(stationTitle);
+  for (const x of [-125, -154]) {
+    const name = board('鎌倉高校前\nEN08  KAMAKURAKOKOMAE', 3.5, 0.8); name.position.set(x, 2.4, 4.1); name.rotation.y = Math.PI; world.add(name);
   }
-  for (let x = -28; x < -10; x += 5) {
-    box(world, [1.5, 0.10, 0.4], [x, 1.28, 6.2], material('#997a48'));
-    for (const dx of [-0.55, 0.55]) box(world, [0.05, 0.4, 0.3], [x + dx, 1.03, 6.2], steel);
-  }
-  for (let x = -32; x < -7; x += 2) {
-    box(world, [0.10, 0.9, 0.10], [x, 0.47, 1.45], concrete);
-    box(world, [2, 0.12, 0.12], [x + 1, 0.85, 1.45], concrete);
-  }
+  // Actual mapped access lane north of the railway, beside the brick apartments.
+  for (const street of geography.streets) ribbon(street.points, street.type === 'footway' || street.type === 'path' ? 2.5 : 4.5, (x,z) => uphill(x,z) + 0.015, asphalt);
 
   const lamps = [], gates = [];
   function crossingPole(x, z, direction) {
@@ -196,42 +219,42 @@ export function buildShonan(scene) {
     for (let i = 0; i < 14; i++) box(arm, [0.30, 0.055, 0.055], [direction * (i * 0.30 + 0.15), 0, 0], i % 2 ? dark : yellow);
     gates.push({ arm, direction });
   }
-  crossingPole(-6.3, 4.8, 1); crossingPole(-1.7, 1.7, -1);
-  const roadSign = new THREE.Group(); roadSign.position.set(-1.6, 0, -4.2); world.add(roadSign);
+  crossingPole(-2.3, -8.8, 1); crossingPole(3.2, -13.3, -1);
+  const roadSign = new THREE.Group(); roadSign.position.set(3.8, 0, -25); world.add(roadSign);
   rod(roadSign, [0, 0, 0], [0, 2.7, 0], 0.035, steel);
   const routeSign = board('134', 0.52, 0.45, '#286096', '#ffffff'); routeSign.position.y = 2.6; roadSign.add(routeSign);
-  const mirror = new THREE.Mesh(new THREE.CircleGeometry(0.27, 24), material('#bdc4bd', 0.16, 0.8)); mirror.position.set(-1.6, 2.65, 5.2); world.add(mirror);
+  const mirror = new THREE.Mesh(new THREE.CircleGeometry(0.27, 24), material('#bdc4bd', 0.16, 0.8)); mirror.position.set(3.4, 2.65, -6.5); world.add(mirror);
   const mirrorRim = new THREE.Mesh(new THREE.TorusGeometry(0.27, 0.018, 8, 30), material('#ce793a')); mirrorRim.position.copy(mirror.position); world.add(mirrorRim);
 
-  // Inland retaining walls, low-rise houses, balconies and dense utility cables.
-  const houseColors = ['#c5bfae', '#e4dfd2', '#b7b7ab', '#b8a38c'];
-  for (let i = 0; i < 12; i++) {
-    const x = i < 6 ? -40 + i * 5.1 : 3 + (i - 6) * 5.5;
-    const z = 9 + i % 3 * 2.5, h = 4.6 + i % 3 * 1.1, w = 4.2;
-    box(world, [w + 0.3, 1.6, 4.3], [x, 0.8, z], concrete);
-    box(world, [w, h, 3.7], [x, h / 2 + 1.6, z], material(houseColors[i % 4]), true);
-    box(world, [w + 0.35, 0.16, 4.0], [x, h + 1.65, z], material('#646b68'), true);
-    for (let floor = 0; floor < 2; floor++) for (let j = 0; j < 3; j++) {
-      box(world, [0.8, 1.0, 0.055], [x - 1.35 + j * 1.35, 2.9 + floor * 2.0, z - 1.88], glass);
-      box(world, [0.035, 1.0, 0.06], [x - 1.35 + j * 1.35, 2.9 + floor * 2.0, z - 1.92], steel);
+  // Official 2024 LOD1: actual footprint and measured elevation of every house.
+  // Colours and windows are photo-guided reconstruction, not scanned textures.
+  const facadeMaterials = ['#dedbd2', '#c6c1b4', '#b7b9b6', '#e5e0d5'].map(c => material(c));
+  for (const building of buildings) {
+    if (building.id === 'bldg_24e04f92-cc0a-40e6-81b3-9612fda18163') continue;
+    const geometry = new THREE.BufferGeometry(); geometry.setAttribute('position', new THREE.Float32BufferAttribute(building.positions, 3)); geometry.computeVertexNormals();
+    const apartment = building.id === 'bldg_1850fe63-486c-41d7-8a79-c092e5ed9d32';
+    const mesh = new THREE.Mesh(geometry, apartment ? material('#a88a68') : facadeMaterials[building.id.charCodeAt(7) % 4]);
+    mesh.name = building.id; mesh.castShadow = mesh.receiveShadow = true; world.add(mesh);
+    const [x0,x1,y0,y1,z0,z1] = building.bounds;
+    // Foundations reach the reference datum so surveyed buildings never float.
+    if (y0 > 0.15) box(world, [x1-x0, y0, z1-z0], [(x0+x1)/2,y0/2,(z0+z1)/2], concrete);
+    const floors = Math.max(1, Math.round((y1-y0)/3));
+    for (let floor = 0; floor < floors; floor++) for (let x = x0 + 1.4; x < x1-1; x += apartment ? 4.2 : 3.0) {
+      const y = y0 + 1.5 + floor * (y1-y0)/floors;
+      box(world, [apartment ? 2.1 : 1.2, 1.35, 0.035], [x,y,z0-0.035], glass);
+      box(world, [0.04, 1.35, 0.045], [x,y,z0-0.06], cream);
+      if (apartment) {
+        box(world, [3.7,0.12,1.2], [x,y-0.78,z0-0.55], cream);
+        box(world, [3.65,0.65,0.04], [x,y-0.35,z0-1.1], material('#78908f',0.2,0.45));
+        rod(world,[x-1.8,y+0.01,z0-1.1],[x+1.8,y+0.01,z0-1.1],0.025,steel);
+      }
     }
-    box(world, [w * 0.75, 0.13, 0.7], [x, 4.2, z - 2.15], cream);
-    rod(world, [x - 1.5, 5, z - 2.45], [x + 1.5, 5, z - 2.45], 0.025, steel);
-    for (let j = 0; j < 7; j++) rod(world, [x - 1.5 + j * 0.5, 4.2, z - 2.45], [x - 1.5 + j * 0.5, 5, z - 2.45], 0.013, steel);
-    box(world, [0.6, 0.45, 0.3], [x + 1.15, 2.5, z - 2.02], cream);
   }
-  // Higher side-street walls leave a clear sightline to the railway and ocean.
-  for (const x of [-7.4, -0.6]) {
-    const wall = box(world, [0.45, 1.7, 19], [x, 1.65, 15.5], concrete); wall.rotation.x = -Math.atan(0.1);
-    for (let z = 8; z < 25; z += 4) {
-      const shrub = new THREE.Mesh(new THREE.IcosahedronGeometry(0.7, 2), material('#52704e'));
-      shrub.position.set(x, 2.2 + (z - 4) * 0.1, z); shrub.scale.set(1.1, 0.8, 1); world.add(shrub);
-    }
+  // Nissaka's roadside retaining walls follow the mapped slope.
+  for (const x of [-3.2, 4.6]) {
+    for (let z = -5; z < 85; z += 5) box(world, [0.4,1.3,5], [x,uphill(x,z)+0.65,z], concrete);
   }
-  wire([[-15, 7.2, 5.3], [-4, 6.6, 15], [3, 8.4, 28]], dark);
-  wire([[-15, 7.4, 5.3], [-4, 6.8, 15], [3, 8.6, 28]], dark);
-
-  const train = new THREE.Group(); train.name = 'Enoden'; train.position.z = 3.3; world.add(train);
+  const train = new THREE.Group(); train.name = 'Enoden'; train.position.z = railZ(0); world.add(train);
   const trainWheels = [];
   function carriage(offset, number) {
     const car = new THREE.Group(); car.position.x = offset; train.add(car);
@@ -271,6 +294,7 @@ export function buildShonan(scene) {
     }
   }
   carriage(-3.85, 1001); carriage(3.85, 1051);
+  train.scale.set(1.65, 1, 1.15);
   box(train, [0.35, 1.65, 1.5], [0, 2.0, 0], dark);
   // Diamond pantograph reaches the contact wire, with no disconnected roof gear.
   for (const z of [-0.32, 0.32]) {
@@ -281,27 +305,117 @@ export function buildShonan(scene) {
   }
   rod(train, [-4.4, 5.97, -0.5], [-3.0, 5.97, 0.5], 0.04, dark);
 
-  let gateAngle = 0;
+  for (let x=-196; x<40; x+=9) {
+    const z=walkZ(x);
+    box(world,[0.75,0.012,0.4],[x,0.10,z-1.14],material('#5e625b',0.7,0.35));
+    for (let k=0;k<7;k++) box(world,[0.04,0.016,0.36],[x-0.3+k*0.1,0.11,z-1.14],dark);
+  }
+  for(let x=-95;x<-18;x+=2.7) for(let y=0.45;y<3.2;y+=0.65){
+    box(world,[2.55,0.014,0.016],[x+(Math.round(y/0.65)%2)*0.2,y,6.81],material('#87877d'));
+    box(world,[0.012,0.60,0.016],[x,y+0.3,6.81],material('#87877d'));
+  }
+  const traffic = [];
+  function japaneseCar(kind, color, direction, startX) {
+    const car = new THREE.Group(); car.name = 'JapaneseTraffic'; world.add(car);
+    const paint = new THREE.MeshPhysicalMaterial({ color, roughness: 0.23, metalness: 0.3, clearcoat: 0.8, clearcoatRoughness: 0.12 });
+    const length = kind === 'kei' ? 3.35 : kind === 'suv' ? 3.7 : 4.5, width = kind === 'kei' ? 1.45 : 1.75;
+    function body(points, depth, mat) {
+      const shape = new THREE.Shape(); points.forEach((p,i) => i ? shape.lineTo(...p) : shape.moveTo(...p)); shape.closePath();
+      const mesh = new THREE.Mesh(new THREE.ExtrudeGeometry(shape,{depth,bevelEnabled:true,bevelSize:0.055,bevelThickness:0.04,bevelSegments:3}),mat);
+      mesh.position.z = -depth/2; mesh.castShadow = true; car.add(mesh);
+    }
+    body([[-length/2,0.43],[-length/2,0.83],[-length/2+0.3,1.01],[length/2-0.4,1.01],[length/2,0.78],[length/2,0.43]],width,paint);
+    const rear = -length/2+0.45, front = length/2-1;
+    const roof = kind === 'kei' ? 1.83 : kind === 'suv' ? 1.72 : 1.44;
+    body([[rear,0.99],[rear+0.35,roof],[front-0.35,roof],[front+0.5,0.99]],width*0.91,glass);
+    box(car,[front-rear-0.65,0.075,width*0.94],[(rear+front)/2,roof+0.06,0],paint,true);
+    for (const z of [-width/2,width/2]) {
+      rod(car,[rear,1,z],[rear+0.35,roof,z*0.91],0.05,paint);
+      rod(car,[front+0.5,1,z],[front-0.35,roof,z*0.91],0.05,paint);
+      rod(car,[(rear+front)/2,1,z],[(rear+front)/2,roof,z*0.91],0.035,paint);
+      box(car,[0.24,0.04,0.035],[-0.05,0.89,z*1.04],steel);
+      box(car,[0.15,0.10,0.13],[front+0.18,1.15,z*1.08],paint);
+    }
+    const wheels = [];
+    for (const x of [-length*0.32,length*0.32]) for (const side of [-1,1]) {
+      const wheel = new THREE.Group(); wheel.position.set(x,0.32,side*width/2); car.add(wheel);
+      const tire = new THREE.Mesh(new THREE.CylinderGeometry(0.30,0.30,0.17,24),dark); tire.rotation.x = Math.PI/2; wheel.add(tire);
+      const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.20,0.20,0.19,12),steel); rim.rotation.x = Math.PI/2; wheel.add(rim); wheels.push(wheel);
+    }
+    for (const z of [-width*0.35,width*0.35]) {
+      box(car,[0.055,0.14,0.38],[length/2+0.035,0.77,z],material('#e6e9d3',0.15));
+      box(car,[0.055,0.15,0.3],[-length/2-0.035,0.76,z],material('#9e2921',0.2));
+    }
+    box(car,[0.06,0.20,width*0.6],[length/2+0.025,0.51,0],dark);
+    for (const end of [-1,1]) {
+      const plate = board('湘南 580\n12-34',0.32,0.15,kind === 'kei' ? '#efc44c' : '#e9e8dd','#36584c'); plate.position.set(end*(length/2+0.07),0.55,0); plate.rotation.y=end*Math.PI/2; car.add(plate);
+    }
+    traffic.push({car,wheels,direction,startX});
+  }
+  for (let i=0;i<14;i++) japaneseCar(['hybrid','kei','suv'][i%3],['#d9dcd7','#b4bec1','#273e42','#e9e5d9','#9faca0'][i%5],i%2 ? -1 : 1,-330+i*49);
+
+  // Merge static geometry by material to keep mobile draw calls manageable.
+  // Animated train, traffic, lamps and crossing arms remain separate groups.
+  world.updateMatrixWorld(true);
+  const batches = new Map();
+  for (const mesh of [...world.children]) {
+    if (!mesh.isMesh || mesh.isInstancedMesh || !mesh.material.isMeshStandardMaterial) continue;
+    if (!batches.has(mesh.material)) batches.set(mesh.material, []);
+    batches.get(mesh.material).push(mesh);
+  }
+  for (const [mat, meshes] of batches) {
+    if (meshes.length < 2) continue;
+    const geometries = meshes.map(mesh => {
+      const geometry = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone();
+      geometry.applyMatrix4(mesh.matrixWorld); return geometry;
+    });
+    const count = geometries.reduce((n,g) => n+g.attributes.position.count,0);
+    const position = new Float32Array(count*3), normal = new Float32Array(count*3), uv = new Float32Array(count*2);
+    let offset=0;
+    for (const g of geometries) {
+      position.set(g.attributes.position.array,offset*3); normal.set(g.attributes.normal.array,offset*3);
+      if (g.attributes.uv) uv.set(g.attributes.uv.array,offset*2);
+      offset+=g.attributes.position.count; g.dispose();
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position',new THREE.BufferAttribute(position,3)); geometry.setAttribute('normal',new THREE.BufferAttribute(normal,3)); geometry.setAttribute('uv',new THREE.BufferAttribute(uv,2));
+    geometry.computeBoundingSphere();
+    const batch = new THREE.Mesh(geometry,mat); batch.name='PhotoReferencedScenery'; batch.receiveShadow=true; batch.castShadow=meshes.some(mesh=>mesh.castShadow); world.add(batch);
+    for (const mesh of meshes) { world.remove(mesh); mesh.geometry.dispose(); }
+  }
+
+  // A continuous out-and-back loop on the mapped railway-side sidewalk.
+  // Two narrow lanes and smooth U turns avoid inventing an inland return street.
+  const routePoints = [], left=-185, right=32, turnRadius=0.6;
+  for(let x=left;x<=right;x+=1) routePoints.push(new THREE.Vector3(x,0.09,walkZ(x)-turnRadius));
+  for(let i=1;i<=24;i++){const a=-Math.PI/2+i*Math.PI/24;routePoints.push(new THREE.Vector3(right+turnRadius*Math.cos(a),0.09,walkZ(right)+turnRadius*Math.sin(a)));}
+  for(let x=right-1;x>=left;x-=1) routePoints.push(new THREE.Vector3(x,0.09,walkZ(x)+turnRadius));
+  for(let i=1;i<24;i++){const a=Math.PI/2+i*Math.PI/24;routePoints.push(new THREE.Vector3(left+turnRadius*Math.cos(a),0.09,walkZ(left)+turnRadius*Math.sin(a)));}
+  const route = new THREE.CatmullRomCurve3(routePoints,true,'centripetal'); route.arcLengthDivisions=16384;
+  const routeLength=route.getLength(), riderSpeed=3.0;
+  let gateAngle=0;
   return {
-    update(time, dt) {
-      const t = time % 35;
-      train.position.x = -26 + t * 3.2;
-      trainWheels.forEach(wheel => { wheel.rotation.y = -time * 3.2 / 0.28; });
-      const closed = Math.abs(train.position.x + 4) < 16;
-      const target = closed ? 0 : Math.PI / 2;
-      gateAngle += (target - gateAngle) * Math.min(1, dt * 4);
-      gates.forEach(({ arm, direction }) => { arm.rotation.z = gateAngle * direction; });
-      lamps.forEach(({ material: light, side }) => { light.emissiveIntensity = closed && Math.floor(time * 2.5) % 2 === side ? 2.8 : 0; });
-      waterMaterial.uniforms.time.value = time;
-      // A complete ride: approach, wait for the train, cross, then turn along Route 134.
-      if (t < 6) return { x: -4, z: 19.5 - t * 2.2, angle: Math.PI / 2, moving: true, slope: true };
-      if (t < 13.5) return { x: -4, z: 6.3, angle: Math.PI / 2, moving: false, slope: true };
-      if (t < 19) return { x: -4, z: 6.3 - (t - 13.5) * 2.2, angle: Math.PI / 2, moving: true, slope: false };
-      if (t < 20) {
-        const a = (t - 19) * Math.PI / 2;
-        return { x: -4 + 1.1 * (1 - Math.cos(a)), z: -5.8 - 1.1 * Math.sin(a), angle: Math.PI / 2 - a, moving: true, slope: false };
+    routeLength, route,
+    update(time,dt) {
+      // Train turns outside the camera's visible range; no in-view teleport.
+      const travel=(time*7)%1280; train.position.x=travel<640 ? -340+travel : 940-travel;
+      const forward=travel<640;
+      train.position.z=railZ(train.position.x); train.rotation.y=-Math.atan2(railZ(train.position.x+1)-railZ(train.position.x-1),2);
+      trainWheels.forEach(w=>{w.rotation.y=(forward?-1:1)*time*7/0.28;});
+      const closed=Math.abs(train.position.x-0.5)<36;
+      gateAngle+=( (closed?0:Math.PI/2)-gateAngle)*Math.min(1,dt*4);
+      gates.forEach(({arm,direction})=>{arm.rotation.z=gateAngle*direction;});
+      lamps.forEach(({material:light,side})=>{light.emissiveIntensity=closed&&Math.floor(time*2.5)%2===side?2.8:0;});
+      waterMaterial.uniforms.time.value=time;
+      for(const {car,wheels,direction,startX} of traffic){
+        const x=((startX+time*8*direction+360)%720+720)%720-360;
+        car.position.set(x,0.04,roadZ(x)+direction*1.65);
+        car.rotation.y=(direction===1?0:Math.PI)-Math.atan2(roadZ(x+1)-roadZ(x-1),2);
+        wheels.forEach(w=>{w.rotation.z=-time*8/0.30;});
       }
-      return { x: -2.9 + (t - 20) * 2.2, z: -6.9, angle: 0, moving: true, slope: false };
+      const u=((time*riderSpeed+180)%routeLength)/routeLength;
+      const position=route.getPointAt(u),tangent=route.getTangentAt(u);
+      return {x:position.x,z:position.z,y:position.y,angle:Math.atan2(-tangent.z,tangent.x),moving:true};
     }
   };
 }

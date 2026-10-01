@@ -13,7 +13,7 @@ try {
 function start() {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color('#bdd1dc');
-  scene.fog = new THREE.Fog('#c1d0d8', 48, 160);
+  scene.fog = new THREE.Fog('#c1d0d8', 110, 680);
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 1.7));
   renderer.shadowMap.enabled = true;
@@ -21,7 +21,7 @@ function start() {
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 0.95;
   document.querySelector('#scene').append(renderer.domElement);
-  const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 650);
+  const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1800);
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.target.set(-4, 1.8, 1.8);
   controls.enableDamping = true;
@@ -29,12 +29,17 @@ function start() {
   controls.minDistance = 5;
   controls.maxDistance = 60;
   controls.maxPolarAngle = Math.PI * 0.48;
+  let manualCamera = false;
+  const cameraTarget = new THREE.Vector3(), cameraOffset = new THREE.Vector3();
   function resetCamera() {
-    camera.position.set(7.5, 6.5, 18.5).multiplyScalar(innerWidth < 600 ? 1.38 : 1);
-    controls.target.set(-4, 1.8, 1.8);
-    controls.update();
+    manualCamera = false;
+    if (!lastPose) return;
+    cameraTarget.set(lastPose.x, lastPose.y + 1.45, lastPose.z);
+    const scale = innerWidth < 600 ? 1.25 : 1;
+    cameraOffset.set(-Math.cos(lastPose.angle) * 8.5, 4.5, -8).multiplyScalar(scale);
+    controls.target.copy(cameraTarget); camera.position.copy(cameraTarget).add(cameraOffset); controls.update();
   }
-  resetCamera();
+  controls.addEventListener('start', () => { manualCamera = true; });
   scene.add(new THREE.HemisphereLight('#d9eaff', '#807463', 1.7));
   const sunlight = new THREE.DirectionalLight('#fff4df', 3.0);
   sunlight.position.set(-18, 30, -25);
@@ -43,7 +48,7 @@ function start() {
   Object.assign(sunlight.shadow.camera, { left: -36, right: 36, top: 36, bottom: -36, near: 1, far: 110 });
   sunlight.shadow.normalBias = 0.035;
   sunlight.shadow.bias = -0.0001;
-  scene.add(sunlight);
+  scene.add(sunlight, sunlight.target);
 
   const mat = (color, roughness = 0.7, metalness = 0) => new THREE.MeshStandardMaterial({ color, roughness, metalness });
   const white = mat('#fff9ea'), feather = mat('#eeeade'), bill = mat('#fbb94e'), pouch = mat('#eaa85b');
@@ -168,12 +173,16 @@ function start() {
   let speed = 1, phase = 0, previous = 0, time = 4;
   let lastPose = null;
   function placeRider(pose) {
-    const ground = z => Math.max(0, z - 4) * 0.1 + Math.max(0, 1 - Math.abs(z - 3.3) / 1.1) * 0.22;
-    const wheelOffset = Math.sin(pose.angle) * 1.12 * 0.7;
-    const frontHeight = ground(pose.z - wheelOffset), rearHeight = ground(pose.z + wheelOffset);
-    const y = (frontHeight + rearHeight) / 2;
-    ride.position.set(pose.x, y + 0.02, pose.z);
-    ride.rotation.set(0, pose.angle, Math.atan2(frontHeight - rearHeight, 2 * 1.12 * 0.7));
+    ride.position.set(pose.x, pose.y - 0.0378, pose.z);
+    ride.rotation.set(0, pose.angle, 0);
+    const newTarget = new THREE.Vector3(pose.x, pose.y + 1.45, pose.z);
+    if (lastPose) {
+      const delta = newTarget.clone().sub(cameraTarget);
+      controls.target.add(delta); camera.position.add(delta);
+    }
+    cameraTarget.copy(newTarget);
+    sunlight.position.set(pose.x - 18, 30, pose.z - 25);
+    sunlight.target.position.set(pose.x, 0, pose.z);
     if (lastPose) {
       const distance = Math.hypot(pose.x - lastPose.x, pose.z - lastPose.z);
       if (pose.moving && distance < 0.3) phase += distance / (radius * 0.7 * 2.4);
@@ -198,12 +207,19 @@ function start() {
     camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight);
   }
   addEventListener('resize', resize); resize();
-  placeRider(shonan.update(time, 1)); loading.hidden = true;
+  placeRider(shonan.update(time, 1)); resetCamera(); loading.hidden = true;
   renderer.setAnimationLoop(now => {
     const dt = Math.min((now - previous) / 1000 || 0, 0.05); previous = now;
     if (!paused && !document.hidden) {
       time += dt * speed;
       placeRider(shonan.update(time, dt * speed));
+    }
+    if (!manualCamera) {
+      const scale = innerWidth < 600 ? 1.25 : 1;
+      cameraOffset.set(-Math.cos(lastPose.angle) * 8.5, 4.5, -8).multiplyScalar(scale);
+      const desired = cameraTarget.clone().add(cameraOffset);
+      camera.position.lerp(desired, 1 - Math.exp(-dt * 3));
+      controls.target.copy(cameraTarget);
     }
     controls.update(); renderer.render(scene, camera);
   });
