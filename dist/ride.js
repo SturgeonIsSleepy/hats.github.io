@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
+import { buildShonan } from './shonan.js';
 
 const loading = document.querySelector('#loading');
 try {
@@ -11,35 +12,35 @@ try {
 
 function start() {
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color('#bce4e7');
-  scene.fog = new THREE.Fog('#bce4e7', 22, 65);
+  scene.background = new THREE.Color('#bdd1dc');
+  scene.fog = new THREE.Fog('#c1d0d8', 48, 160);
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 1.7));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.15;
+  renderer.toneMappingExposure = 0.95;
   document.querySelector('#scene').append(renderer.domElement);
-  const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
+  const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 650);
   const controls = new OrbitControls(camera, renderer.domElement);
-  controls.target.set(0.15, 1.65, 0);
+  controls.target.set(-4, 1.8, 1.8);
   controls.enableDamping = true;
   controls.enablePan = false;
-  controls.minDistance = 6.5;
-  controls.maxDistance = 19;
+  controls.minDistance = 5;
+  controls.maxDistance = 60;
   controls.maxPolarAngle = Math.PI * 0.48;
   function resetCamera() {
-    camera.position.set(7.5, 5.3, 10.5).multiplyScalar(innerWidth < 600 ? 1.35 : 1);
-    controls.target.set(0.15, 1.65, 0);
+    camera.position.set(7.5, 6.5, 18.5).multiplyScalar(innerWidth < 600 ? 1.38 : 1);
+    controls.target.set(-4, 1.8, 1.8);
     controls.update();
   }
   resetCamera();
-  scene.add(new THREE.HemisphereLight('#eefaff', '#6e9c81', 2.5));
-  const sunlight = new THREE.DirectionalLight('#fff0d4', 3.2);
-  sunlight.position.set(-3, 9, 7);
+  scene.add(new THREE.HemisphereLight('#d9eaff', '#807463', 1.7));
+  const sunlight = new THREE.DirectionalLight('#fff4df', 3.0);
+  sunlight.position.set(-18, 30, -25);
   sunlight.castShadow = true;
   sunlight.shadow.mapSize.set(2048, 2048);
-  Object.assign(sunlight.shadow.camera, { left: -10, right: 10, top: 10, bottom: -10, near: 1, far: 25 });
+  Object.assign(sunlight.shadow.camera, { left: -36, right: 36, top: 36, bottom: -36, near: 1, far: 110 });
   sunlight.shadow.normalBias = 0.035;
   sunlight.shadow.bias = -0.0001;
   scene.add(sunlight);
@@ -67,58 +68,9 @@ function start() {
     mesh.castShadow = true; parent.add(mesh); return mesh;
   }
 
-  // The fixed rider and moving scenery form a seamless ride in every camera view.
-  const sea = new THREE.Mesh(new THREE.PlaneGeometry(150, 150), mat('#53bec6', 0.28));
-  sea.rotation.x = -Math.PI / 2; sea.position.y = -0.25; scene.add(sea);
-  const coast = new THREE.Mesh(new THREE.BoxGeometry(90, 0.4, 7), mat('#d2dcac'));
-  coast.position.y = -0.2; coast.receiveShadow = true; scene.add(coast);
-  const road = new THREE.Mesh(new THREE.BoxGeometry(90, 0.045, 3.3), mat('#859d97'));
-  road.position.y = 0.025; road.receiveShadow = true; scene.add(road);
-  for (const z of [-1.56, 1.56]) {
-    const edge = new THREE.Mesh(new THREE.BoxGeometry(90, 0.007, 0.045), mat('#e4e8cf'));
-    edge.position.set(0, 0.052, z); scene.add(edge);
-  }
-  const moving = [];
-  for (let i = 0; i < 22; i++) {
-    const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.006, 0.055), mat('#e5ead6'));
-    stripe.position.set(i * 2 - 22, 0.053, 0); scene.add(stripe); moving.push(stripe);
-  }
-  const grass = mat('#769d62');
-  for (let i = 0; i < 28; i++) {
-    const cluster = new THREE.Group();
-    cluster.position.set(i * 1.6 - 22, 0, (i % 2 ? 1 : -1) * (2 + (i % 4) * 0.32));
-    for (let j = 0; j < 4; j++) {
-      const blade = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.17 + j * 0.035, 4), grass);
-      blade.position.set(j * 0.05, 0.09, j % 2 * 0.05); blade.rotation.z = (j - 1.5) * 0.15; cluster.add(blade);
-    }
-    if (i % 5 === 0) ellipsoid(cluster, mat('#e7dbb6'), [0.2, 0.09, 0.1], [0.2, 0.1, 0.15]);
-    scene.add(cluster); moving.push(cluster);
-  }
-  const ripples = [];
-  const rippleMaterial = new THREE.MeshBasicMaterial({ color: '#a8e1db', transparent: true, opacity: 0.3 });
-  for (let i = 0; i < 55; i++) {
-    const ripple = new THREE.Mesh(new THREE.PlaneGeometry(0.6 + i % 4 * 0.3, 0.035), rippleMaterial);
-    ripple.rotation.x = -Math.PI / 2;
-    ripple.position.set((i * 7.13 % 50) - 25, -0.235, (i % 2 ? 1 : -1) * (4.2 + i % 11 * 1.1));
-    scene.add(ripple); ripples.push(ripple);
-  }
-  // Palms sit beyond the riding lane and roll past without entering the bicycle.
-  function palm(x, z) {
-    const group = new THREE.Group(); group.position.set(x, 0, z);
-    curve(group, [[0, 0, 0], [0.1, 1, 0], [0.4, 2.3, 0]], 0.09, mat('#9a8161'));
-    const leafMaterial = mat('#428c73');
-    for (let i = 0; i < 7; i++) {
-      const angle = i * Math.PI * 2 / 7;
-      const leaf = new THREE.Shape();
-      leaf.moveTo(0, 0); leaf.quadraticCurveTo(0.7, 0.25, 1.35, 0); leaf.quadraticCurveTo(0.65, -0.25, 0, 0);
-      const mesh = new THREE.Mesh(new THREE.ExtrudeGeometry(leaf, { depth: 0.025, bevelEnabled: false }), leafMaterial);
-      mesh.rotation.set(-Math.PI / 2, 0.25, angle); mesh.position.set(0.4, 2.3, 0); mesh.castShadow = true; group.add(mesh);
-    }
-    scene.add(group); moving.push(group);
-  }
-  palm(-7, -2.8); palm(9, -3); palm(19, 2.8);
+  const shonan = buildShonan(scene);
 
-  const ride = new THREE.Group(); scene.add(ride);
+  const ride = new THREE.Group(); ride.name = "PelicanCyclist"; ride.scale.setScalar(0.7); scene.add(ride);
   const wheels = [];
   const radius = 0.65, wheelHeight = radius + 0.054;
   function wheel(x) {
@@ -213,7 +165,22 @@ function start() {
     wheels.forEach(w => { w.rotation.z = -phase * 2.4; });
   }
   let paused = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  let speed = 1, phase = 0, previous = 0;
+  let speed = 1, phase = 0, previous = 0, time = 4;
+  let lastPose = null;
+  function placeRider(pose) {
+    const ground = z => Math.max(0, z - 4) * 0.1 + Math.max(0, 1 - Math.abs(z - 3.3) / 1.1) * 0.22;
+    const wheelOffset = Math.sin(pose.angle) * 1.12 * 0.7;
+    const frontHeight = ground(pose.z - wheelOffset), rearHeight = ground(pose.z + wheelOffset);
+    const y = (frontHeight + rearHeight) / 2;
+    ride.position.set(pose.x, y + 0.02, pose.z);
+    ride.rotation.set(0, pose.angle, Math.atan2(frontHeight - rearHeight, 2 * 1.12 * 0.7));
+    if (lastPose) {
+      const distance = Math.hypot(pose.x - lastPose.x, pose.z - lastPose.z);
+      if (pose.moving && distance < 0.3) phase += distance / (radius * 0.7 * 2.4);
+    }
+    lastPose = pose;
+    animateRider(phase);
+  }
   const pause = document.querySelector('#pause');
   function updatePause() {
     pause.querySelector('span').textContent = paused ? '播放' : '暂停';
@@ -231,15 +198,12 @@ function start() {
     camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight);
   }
   addEventListener('resize', resize); resize();
-  animateRider(0); loading.hidden = true;
+  placeRider(shonan.update(time, 1)); loading.hidden = true;
   renderer.setAnimationLoop(now => {
     const dt = Math.min((now - previous) / 1000 || 0, 0.05); previous = now;
     if (!paused && !document.hidden) {
-      phase += dt * 2.5 * speed;
-      animateRider(phase);
-      const distance = dt * 2.5 * speed * 2.4 * radius;
-      for (const item of moving) { item.position.x -= distance; if (item.position.x < -22) item.position.x += 44; }
-      for (const ripple of ripples) { ripple.position.x -= distance * 0.45; if (ripple.position.x < -25) ripple.position.x += 50; }
+      time += dt * speed;
+      placeRider(shonan.update(time, dt * speed));
     }
     controls.update(); renderer.render(scene, camera);
   });

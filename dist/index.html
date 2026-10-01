@@ -3,26 +3,26 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#bce4e7">
-  <meta name="description" content="一只鹈鹕，沿着海岸慢慢骑行。可旋转视角的实时 3D 动画。">
-  <title>鹈鹕骑行 · 海风正好</title>
+  <meta name="theme-color" content="#bdd1dc">
+  <meta name="description" content="镰仓高校前，江之电从湘南海岸的道口驶过，一只鹈鹕等待列车后骑车前往海边。">
+  <title>鹈鹕骑行 · 镰仓高校前</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%230c666e'/%3E%3Ccircle cx='12' cy='11' r='6' fill='%23fff9ed'/%3E%3Cpath d='M15 10h14l-9 5h-5' fill='%23ffb64c'/%3E%3Ccircle cx='13' cy='9' r='1' fill='%23273538'/%3E%3Cpath d='M7 15q-5 12 10 12V17' fill='%23fff9ed'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="./style.css">
   <script type="importmap">{"imports":{"three":"./vendor/three.module.min.js"}}</script>
 </head>
 <body>
-  <main id="scene" aria-label="鹈鹕骑自行车的三维海岸场景"></main>
-  <header><span class="mark">P.</span><div><h1>海风正好</h1><p>鹈鹕骑行</p></div></header>
-  <div class="edition" aria-hidden="true">PELICAN<br>COASTAL RIDE<span>01 / 无尽的夏天</span></div>
+  <main id="scene" aria-label="镰仓高校前站、江之电铁路道口与湘南海岸的三维骑行场景"></main>
+  <header><span class="mark">P.</span><div><h1>镰仓高校前</h1><p>鹈鹕的湘南骑行</p></div></header>
+  <div class="edition" aria-hidden="true">EN08<br>KAMAKURAKOKOMAE<span>江之电 · 七里滨</span></div>
   <div id="loading" role="status">正在驶向海边…</div>
   <footer>
     <p class="hint">拖动旋转视角 <span>·</span> 双指缩放</p>
     <div class="controls">
       <button id="pause" type="button" aria-label="暂停动画" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg><span>暂停</span></button>
       <span class="divider"></span>
-      <label for="speed">骑行速度</label><input id="speed" type="range" min="0.4" max="1.8" value="1" step="0.1" aria-label="骑行速度"><output id="speed-value" for="speed">1.0×</output>
+      <label for="speed">播放速度</label><input id="speed" type="range" min="0.4" max="1.8" value="1" step="0.1" aria-label="播放速度"><output id="speed-value" for="speed">1.0×</output>
       <span class="divider"></span>
-      <button id="reset" type="button" aria-label="恢复初始视角"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10a8 8 0 1 1 1.5 8M4 4v6h6"/></svg><span>视角</span></button>
+      <button id="reset" type="button" aria-label="恢复道口视角"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10a8 8 0 1 1 1.5 8M4 4v6h6"/></svg><span>道口</span></button>
     </div>
   </footer>
   <noscript>请启用 JavaScript 来观看 3D 动画。</noscript>
